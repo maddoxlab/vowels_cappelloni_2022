@@ -1,0 +1,8 @@
+---
+# Application paths
+praat: /Applications/Praat.app/Contents/MacOS/Praat
+ffmpeg: /Applications/ffmpeg
+# Praat script paths
+analysis: praatscripts/analysis.praat
+extraction: praatscripts/extraction.praat
+synthesis: praatscripts/synthesis.praat
