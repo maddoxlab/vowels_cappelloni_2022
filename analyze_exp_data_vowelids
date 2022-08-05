@@ -1,0 +1,644 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep 10 14:02:00 2021
+
+@author: maddy
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from expyfun.io import read_tab, read_hdf5, read_tab_raw
+import ast
+
+from expyfun.analyze import dprime
+import pandas as pd
+
+# %%
+from statsmodels.stats.power import TTestIndPower
+effect = 0.545/2 / (0.1043 * np.sqrt(17))
+alpha = 0.05
+power = 0.8
+# perform power analysis
+analysis = TTestIndPower()
+result = analysis.solve_power(effect, power=power, nobs1=None, ratio=1.0, alpha=alpha)
+#print('Sample Size: %.3f' % result)
+
+# %%
+
+data_path = '/home/maddy/Code/data_analysis/Vowels/vowel_faces/raw_data/'
+fnames = ['VowelIDs001_2022-01-27 15_16_09.816129',
+          'VowelIDs002_2022-01-28 11_34_50.964029',
+          'VowelIDs003_2022-02-09 14_31_33.144613',
+          'VowelIDs004_2022-02-10 15_15_31.184489',
+          'VowelIDs005_2022-02-10 16_31_19.237413',
+          'VowelIDs006_2022-02-11 12_33_48.097859',
+          'VowelIDs007_2022-02-11 15_31_41.589352',
+          'VowelIDs008_2022-02-15 13_09_02.247645',
+          'VowelIDs009_2022-02-15 16_02_58.467659',
+          'VowelIDs010_2022-02-18 11_31_30.786146',
+          'VowelIDs011_2022-02-22 11_17_51.410749',
+          'VowelIDs012_2022-02-22 15_35_38.343824',
+          'VowelIDs013_2022-02-22 16_56_27.478835',
+          'VowelIDs014_2022-02-24 14_02_18.064635',
+          'VowelIDs015_2022-02-24 15_20_07.249668',
+          'VowelIDs016_2022-02-24 16_57_48.019146',
+          'VowelIDs017_2022-02-24 18_42_12.971214',
+          'VowelIDs018_2022-02-25 12_31_48.225383',
+          'VowelIDs019_2022-02-25 13_59_45.873394',
+          'VowelIDs020_2022-03-01 13_05_02.469398',
+          'VowelIDs021_2022-03-01 15_30_21.940408',
+          'VowelIDs022_2022-03-03 15_13_13.251788',
+          'VowelIDs023_2022-03-03 17_31_17.639484',
+          'VowelIDs024_2022-03-07 14_37_02.048576',
+          'VowelIDs025_2022-03-11 12_12_01.411861',
+          'VowelIDs026_2022-03-11 12_12_01.411861',
+          'VowelIDs027_2022-03-22 10_07_53.958458',
+          'VowelIDs028_2022-03-22 12_59_09.080306',
+          'VowelIDs029_2022-03-25 11_59_48.250163',
+          'VowelIDs030_2022-04-08 11_20_23.379536',
+          'VowelIDs031_2022-04-14 15_26_46.379327',
+          #'VowelIDs032_2022-04-15 10_16_54.406540',
+          'VowelIDs033_2022-05-18 09_20_23.716827']
+all_id = ['010', '022', '011', '101', '021', '024', '017', '007', '030', '005',
+          '104', '027', '002', '013', '018', '009', '025', '103', '102', '003',
+          '029', '026', '006', '028', '105', '106', '110', '111', '112', '107',
+          '113', 
+          #'114',
+          '115']
+from matplotlib import rcParams
+from matplotlib import rc
+from matplotlib.patches import Rectangle
+plt.rcParams['text.usetex'] = False
+fontsize=14
+#rc('text', usetex=False)
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=fontsize)
+
+
+from matplotlib import cm
+
+n_bins = 24
+hsv = cm.get_cmap('rainbow', len(fnames))
+
+colors = np.linspace(0, 1, len(fnames))
+
+subjects = [f[8:11] for f in fnames]
+dprime_by_cond = np.zeros((len(subjects), 2, 4))
+bias_by_cond = np.zeros((len(subjects), 2, 4))
+hitrate_by_cond = np.zeros((len(subjects), 2, 4))
+farate_by_cond = np.zeros((len(subjects), 2, 4))
+subject_df = []
+all_id_df = []
+coherent_df = []
+congruent_df = []
+blip_talker_df = []
+blip_vowel_df = []
+other_vowel_df = []
+#hits_df = []
+#misses_df = []
+#fas_df = []
+#crs_df = []
+#dprime_by_trial_df = []
+#bias_by_trial_df = []
+blips_df = []
+responses_df = []
+
+for i, (fname, sub) in enumerate(zip(fnames, subjects)):
+    data = read_tab(data_path + fname + '.tab')
+    trial_ids = np.array([d['trial_id'][0][0][11:] for d in data])
+    main_trials = np.array([len(t) > 30 for t in trial_ids])
+    
+#    blips_raw = read_hdf5('trial_blips.hdf5')
+#    trl_fnames = []
+#    talkers = np.array(['Ross', 'Maddy'])
+#    vowels = np.array(['ao', 'au', 'eo', 'eu', 'iu'])
+#    for mask_l, rep in enumerate(['a', 'b', 'c', 'd']):
+#        for talker_match in [True]: # ** for full vowels, [True, False] **
+#            for vowel_match in [True]: # ** for full vowels, [True, False] **
+#                for mask_k, coherent in enumerate([True, False]):
+#                    talker_match = coherent
+#                    vowel_match = coherent
+#                    for t in np.arange(len(talkers), dtype=bool):
+#                        for v in np.arange(len(vowels)):
+#                            trl_fnames.append('{}_{}_'.format(talkers[int(t)], vowels[v]) + 'talker{}'.format(int(talker_match)) + 'vowel{}'.format(int(vowel_match)) + 'coherent{}'.format(int(coherent)) + rep)
+#    blips = []
+#    for trl_id in trial_ids[main_trials]:
+#        ind = np.where([trl_id[:-10] == t for t in trl_fnames])[0][0]
+#        blips.append(blips_raw[ind])
+#    blips = np.array(blips)
+    target_talker = np.array(['Ross' if t[0] == 'R' else 'Maddy' for t in trial_ids[main_trials]])
+    target_vowel = np.array([t[-34:-31] for t in trial_ids[main_trials]])
+    masker_vowel = np.array([t[-31:-29] for t in trial_ids[main_trials]])
+    coherent = np.array([1 if t[-7]=='1' else 0 for t in trial_ids[main_trials]])
+    vowel_match = np.array([int(t[-16]) for t in trial_ids[main_trials]])
+    talker_match = coherent
+    
+    blips = np.array([ast.literal_eval(d['blips'][0][0]) for d in data])[main_trials]
+    
+    responses = np.array([d['responses'][0][0]for d in data])[main_trials]
+    responses = [ast.literal_eval(r) for r in responses]
+    
+    target_blips = [b[0] for b in blips]
+    masker_blips = [b[1] for b in blips]
+    visual_blips = [b[2] for b in blips]
+    
+    hits = np.array([sum([any([(r > (b)) and (r < (b + 1)) for r in response]) for b in blip]) for blip, response in zip(target_blips, responses)])
+    total_target = np.array([len(b) for b in target_blips])
+    
+    fas = np.array([sum([any([(r > b) and (r < (b + 1)) for r in response]) for b in blip]) for blip, response in zip(masker_blips, responses)])
+    total_masker = np.array([len(b) for b in masker_blips])
+    
+    misses = np.array([tot - hit for tot, hit in zip(total_target, hits)])
+    crs = np.array([tot - fa for tot, fa in zip(total_masker, fas)])
+    
+    vis_hit = np.array([sum([any([(r > b) and (r < (b + 1)) for r in response]) for b in blip]) for blip, response in zip(visual_blips, responses)])
+    total_vis = np.array([len(b) for b in visual_blips])
+    vis_hit_rate = np.array([vis / tot for vis, tot in zip(vis_hit, total_vis)])
+    total_vis_hit_rate = sum(vis_hit) / sum(total_vis)
+    
+    dprime_by_trial = [dprime([h, m, f, c]) for h, m, f, c in zip(hits, misses, fas, crs)]
+    bias_by_trial = [dprime([h, m, f, c], return_bias=True)[-1] for h, m, f, c in zip(hits, misses, fas, crs)]
+    
+    for trl in np.arange(sum(main_trials)):
+        blip_num = hits[trl] + fas[trl] + misses[trl] + crs[trl]
+        subject_df.append(np.array(blip_num * [sub]))
+        all_id_df.append(np.array(blip_num * [all_id[i]]))
+#        coherent_df.append(np.array(blip_num * [coherent[trl]]))
+        if coherent[trl]:
+            oth_coh = 0
+        else:
+            oth_coh = 1
+        
+        coherent_df.append(np.array(np.array((hits[trl] * [coherent[trl]]) + (fas[trl] * [oth_coh]) + (crs[trl] * [oth_coh]) + (misses[trl] * [coherent[trl]]))))
+        
+        if vowel_match[trl] == 3:
+            congruent_df.append(np.array(np.array((hits[trl] * [2]) + (fas[trl] * [0]) + (crs[trl] * [0]) + (misses[trl] * [2]))))
+        elif vowel_match[trl] == 2:
+            congruent_df.append(np.array(np.array((hits[trl] * [2]) + (fas[trl] * [1]) + (crs[trl] * [1]) + (misses[trl] * [2]))))
+        elif vowel_match[trl] == 1:
+            congruent_df.append(np.array(np.array((hits[trl] * [1]) + (fas[trl] * [2]) + (crs[trl] * [2]) + (misses[trl] * [1]))))
+        else:
+            congruent_df.append(np.array(np.array((hits[trl] * [0]) + (fas[trl] * [2]) + (crs[trl] * [2]) + (misses[trl] * [0]))))
+        
+        blips_df.append(np.array((hits[trl] * [1]) + (fas[trl] * [0]) + (crs[trl] * [0]) + (misses[trl] * [1])))
+        responses_df.append(np.array((hits[trl] * [1]) + (fas[trl] * [1]) + (crs[trl] * [0]) + (misses[trl] * [0])))
+        
+        if target_talker[trl] == 'Ross':
+            masker_talker = 'Maddy'
+        else:
+            masker_talker = 'Ross'
+        blip_talker_df.append(np.array((hits[trl] * [target_talker[trl]]) + (fas[trl] * [masker_talker]) + (crs[trl] * [masker_talker]) + (misses[trl] * [target_talker[trl]])))
+        blip_vowel_df.append(np.array((hits[trl] * [target_vowel[trl]]) + (fas[trl] * [masker_vowel[trl]]) + (crs[trl] * [masker_vowel[trl]]) + (misses[trl] * [target_vowel[trl]])))
+        other_vowel_df.append(np.array((hits[trl] * [masker_vowel[trl]]) + (fas[trl] * [target_vowel[trl]]) + (crs[trl] * [target_vowel[trl]]) + (misses[trl] * [masker_vowel[trl]])))
+#        hits_df.append(hits)
+#        misses_df.append(misses)
+#        fas_df.append(fas)
+#        crs_df.append(crs)
+#        dprime_by_trial_df.append(dprime_by_trial)
+#        bias_by_trial_df.append(bias_by_trial)
+    
+    for coh in np.arange(2):
+        for con in np.arange(4):
+            coh_inds = np.copy(coherent)
+            con_inds = np.copy(vowel_match)
+            inds = (coh_inds==coh) * (con_inds==con)
+            dprime_by_cond[i, coh, con] = dprime([sum(hits[inds]), sum(misses[inds]), sum(fas[inds]), sum(crs[inds])])
+            bias_by_cond[i, coh, con] = dprime([sum(hits[inds]), sum(misses[inds]), sum(fas[inds]), sum(crs[inds])], return_bias=True)[-1]
+            hitrate_by_cond[i, coh, con] = sum(hits[inds]) / (sum(hits[inds]) + sum(misses[inds]))
+            farate_by_cond[i, coh, con] = sum(fas[inds]) / (sum(fas[inds]) + sum(crs[inds]))
+        
+#    plt.figure(1)
+#    plt.subplot(255)
+#    plt.plot(np.random.rand() - 0.5, total_vis_hit_rate, 'o', c=hsv(colors[i]))
+#    plt.title('visual hit rate')
+##    
+#    plt.figure(2)
+#    plt.subplot(155)
+#    plt.plot(np.random.rand() - 0.5, total_vis_hit_rate, 'o', c=hsv(colors[i]))
+#    plt.title('visual hit rate')
+    
+#    plt.figure(3)
+#    plt.subplot(155)
+#    plt.plot(np.random.rand() - 0.5, total_vis_hit_rate, 'o', c=hsv(colors[i]))
+#    plt.title('visual hit rate')
+    
+#    data2 = read_tab_raw(data_path + fname + '.tab')
+#    aud_dprime = np.array(data2)[np.where([d[1]=='screen_text' for d in data2])[0]][22][-1][17:25]
+#    aud_dprime = float(aud_dprime)
+#    vis_hit = np.array(data2)[np.where([d[1]=='screen_text' for d in data2])[0]][22][-1][-5:]
+#    vis_hit = float(vis_hit) / 100
+#    plt.figure(100 + i)
+#    plt.subplot(231)
+#    plt.plot(0.5, aud_dprime, 'o', color='C2')
+#    plt.plot(0.5, vis_hit, 'o', color='C3')
+#    plt.plot([0, 1], [0.7, 0.7], 'k')
+#    plt.ylim([.6, 3.75])
+#    plt.legend(('Aud d\'', 'Vis Hitrate', 'Threshold'))
+#    plt.ylabel('Training Values')
+#    plt.subplot(232)
+#    plt.plot(dprime_by_cond[i].T, '-o')
+#    plt.legend(('Incoherent', 'Coherence'))
+#    plt.xlabel('Vowel Match')
+#    plt.ylabel('d\'')
+#    plt.ylim([.5, 3.75])
+#    plt.title('Subject ' + sub)
+#    plt.subplot(233)
+#    plt.plot(bias_by_cond[i].T, '-o')
+#    plt.xlabel('Vowel Match')
+#    plt.ylabel('bias')
+#    plt.ylim([-.25, 1.25])
+#    plt.subplot(235)
+#    plt.plot(hitrate_by_cond[i].T, '-o')
+#    plt.xlabel('Vowel Match')
+#    plt.ylabel('hit rate')
+#    plt.ylim([.25, 1])
+#    plt.subplot(236)
+#    plt.plot(farate_by_cond[i].T, '-o')
+#    plt.xlabel('Vowel Match')
+#    plt.ylabel('FA rate')
+#    plt.ylim([0, .75])
+#    plt.subplot(234)
+#    plt.plot(vis_hit_rate.mean(), 'ko')
+#    plt.xlabel('Talker Match')
+#    plt.ylabel('Visual hit rate')
+#    plt.ylim([.7, 1])
+#    plt.tight_layout()
+#    plt.savefig('ind_data_ids' + sub + '.pdf')
+
+#plt.figure(1)
+#plt.subplot(251)
+#[plt.plot(d[:, 0], c=hsv(co)) for d, co in zip(dprime_by_cond, colors)]
+#plt.title('InCoherent Dprime')
+#plt.xlabel('Talker ID Match')
+#plt.plot(dprime_by_cond.mean(0)[:, 0], 'k', lw=3)
+#plt.ylim([0.7, 4])
+#plt.grid(axis='y')
+#plt.subplot(252)
+#[plt.plot(d[:, 1], c=hsv(co)) for d, co in zip(dprime_by_cond, colors)]
+
+##plt.xticks([0, 1], {'Coh', 'InCoh'})
+#plt.xlabel('Talker ID Match')
+#plt.title('Coherent Dprime')
+#plt.plot(dprime_by_cond.mean(0)[:, 1], 'k', lw=3)
+#plt.ylim([0.7, 4])
+#plt.grid(axis='y')
+#plt.subplot(253)
+#[plt.plot(b[:, 0], c=hsv(co)) for b, co in zip(bias_by_cond, colors)]
+#plt.ylim([-1, 1])
+#plt.grid(axis='y')
+#plt.plot(bias_by_cond.mean(0)[:, 0], 'k', lw=3)
+#plt.title('Incoherent Bias')
+#plt.xlabel('Talker ID Match')
+#plt.subplot(254)
+#[plt.plot(b[:, 1], c=hsv(co)) for b, co in zip(bias_by_cond, colors)]
+##plt.xticks([0, 1], {'Incoh', 'Coh'})
+#plt.xlabel('Talker ID Match')
+#plt.title('Coherent Bias')
+#plt.plot(bias_by_cond.mean(0)[:, 1], 'k', lw=3)
+#plt.grid(axis='y')
+#plt.ylim([-1, 1])
+##plt.figure(2)
+#plt.subplot(256)
+#[plt.plot(h[:, 0], c=hsv(co)) for h, co in zip(hitrate_by_cond, colors)]
+#plt.plot(hitrate_by_cond.mean(0)[:, 0], 'k', lw=3)
+#plt.title('Incoherent Hits')
+#plt.xlabel('Talker ID Match')
+#plt.ylim([0.7, 1])
+#plt.grid(axis='y')
+#plt.subplot(257)
+#[plt.plot(h[:, 1], c=hsv(co)) for h, co in zip(hitrate_by_cond, colors)]
+##plt.xticks([0, 1], {'Incoh', 'Coh'})
+#plt.xlabel('Talker ID Match')
+#plt.title('Coherent Hits')
+#plt.plot(hitrate_by_cond.mean(0)[:, 1], 'k', lw=3)
+#plt.ylim([0.7, 1])
+#plt.grid(axis='y')
+#plt.subplot(258)
+#[plt.plot(f[:, 0], c=hsv(co)) for f, co in zip(farate_by_cond, colors)]
+#plt.plot(farate_by_cond.mean(0)[:, 0], 'k', lw=3)
+#plt.xlabel('Talker ID Match')
+#plt.ylim([0, .3])
+#plt.grid(axis='y')
+#plt.title('Incoherent FAs')
+#plt.subplot(259)
+#[plt.plot(f[:, 1], c=hsv(co)) for f, co in zip(farate_by_cond, colors)]
+##plt.xticks([0, 1], {'Incoh', 'Coh'})
+#plt.xlabel('Talker ID Match')
+#plt.ylim([0, .3])
+#plt.grid(axis='y')
+#plt.title('Coherent FAs')
+#plt.plot(farate_by_cond.mean(0)[:, 1], 'k', lw=3)
+#
+#plt.subplot(255)
+#plt.legend([f for f in subjects])
+
+#plt.figure(2)
+#plt.subplot(151)
+#[plt.plot(d[:, 0], ':', c=hsv(co)) for d, co in zip(dprime_by_cond, colors)]
+#plt.plot(dprime_by_cond.mean(0)[:, 0], 'k:', lw=3, label='$V_{talker}=AM_{talker}$')
+#[plt.plot(d[:, 1], c=hsv(co)) for d, co in zip(dprime_by_cond, colors)]
+#plt.plot(dprime_by_cond.mean(0)[:, 1], 'k', lw=3, label='$V_{talker}=AT_{talker}$')
+#
+#plt.title('Dprime')
+#plt.xticks([0, 1], ['$V_{timecourse}=AM_{timecourse}$', '$V_{timecourse}=AT_{timecourse}$'])
+#plt.ylim([0.7, 3.5])
+#plt.grid(axis='y')
+#plt.legend()
+#
+#plt.subplot(152)
+#[plt.plot(b[:, 0], ':', c=hsv(co)) for b, co in zip(bias_by_cond, colors)]
+#plt.plot(bias_by_cond.mean(0)[:, 0], 'k:', lw=3)
+#[plt.plot(b[:, 1], c=hsv(co)) for b, co in zip(bias_by_cond, colors)]
+#plt.plot(bias_by_cond.mean(0)[:, 1], 'k', lw=3)
+#
+#plt.title('Bias')
+#plt.xticks([0, 1], ['$V_{timecourse}=AM_{timecourse}$', '$V_{timecourse}=AT_{timecourse}$'])
+#plt.grid(axis='y')
+#plt.ylim([-1, 1])
+#
+#
+#plt.subplot(153)
+#[plt.plot(h[:, 0], ':', c=hsv(co)) for h, co in zip(hitrate_by_cond, colors)]
+#plt.plot(hitrate_by_cond.mean(0)[:, 0], 'k:', lw=3)
+#[plt.plot(h[:, 1], c=hsv(co)) for h, co in zip(hitrate_by_cond, colors)]
+#plt.plot(hitrate_by_cond.mean(0)[:, 1], 'k', lw=3)
+#
+#plt.title('Hits')
+#plt.xticks([0, 1], ['$V_{timecourse}=AM_{timecourse}$', '$V_{timecourse}=AT_{timecourse}$'])
+#plt.ylim([0.6, 1])
+#plt.grid(axis='y')
+#
+#
+#plt.subplot(154)
+#[plt.plot(f[:, 0], ':', c=hsv(co)) for f, co in zip(farate_by_cond, colors)]
+#plt.plot(farate_by_cond.mean(0)[:, 0], 'k:', lw=3)
+#[plt.plot(f[:, 1], c=hsv(co)) for f, co in zip(farate_by_cond, colors)]
+#plt.plot(farate_by_cond.mean(0)[:, 1], 'k', lw=3)
+#
+#plt.xticks([0, 1], ['$V_{timecourse}=AM_{timecourse}$', '$V_{timecourse}=AT_{timecourse}$'])
+#plt.ylim([0, .3])
+#plt.grid(axis='y')
+#plt.title('FAs')
+#
+#plt.subplot(155)
+#plt.legend([f for f in subjects])
+#plt.ylim([.9, 1])
+#plt.xticks([], [])
+
+plt.figure(3, figsize=(7.2, 4))
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=10)
+plt.rc('axes', titlesize=10)
+plt.subplot(141)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+
+[plt.plot(d[0], ':', c=hsv(co), lw=0.5, ms=1, zorder=-100) for d, co in zip(dprime_by_cond, colors)]
+plt.plot(dprime_by_cond.mean(0)[0], 'k:', lw=2, label='$V_{timecourse}=AM_{timecourse}$')
+[plt.plot(d[1], c=hsv(co), lw=0.5, ms=1, zorder=-100) for d, co in zip(dprime_by_cond, colors)]
+plt.plot(dprime_by_cond.mean(0)[1], 'k', lw=2, label='$V_{timecourse}=AT_{timecourse}$')
+
+plt.ylabel('Sensitivity (d\')')
+#plt.xticks([0, 1, 2, 3], ['$V_{vowel pair}=AM_{vowel pair}$', '$V_{vowel pair}=AM_{vowel pair}~AT_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}~AM_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}$'])
+
+plt.xticks([0, 1, 2, 3], ['$AM_{vowelpair}$', '$AM_{vowelpair}\sim AT$','$AT_{vowelpair}\sim AM$', '$AT_{vowelpair}$'], rotation=90)
+plt.xlabel('$V_{vowelpair}$ Match')
+ms=4
+plt.ylim([0, 4])
+#plt.grid(axis='y')
+#plt.legend()
+n_resamp = 1000
+dprime_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    dprime_err.append(dprime_by_cond[subs].mean(0))
+dprime_err = np.array(dprime_err)
+
+plt.errorbar(0.06, dprime_by_cond.mean(0)[1, 0], np.array([dprime_by_cond.mean(0)[1, 0] - np.sort(dprime_err[:, 1, 0])[25], np.sort(dprime_err[:, 1, 0])[-25] - dprime_by_cond.mean(0)[1, 0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1.06, dprime_by_cond.mean(0)[1, 1], np.array([dprime_by_cond.mean(0)[1, 1] - np.sort(dprime_err[:, 1, 1])[25], np.sort(dprime_err[:, 1, 1])[-25] - dprime_by_cond.mean(0)[1, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(2.06, dprime_by_cond.mean(0)[1, 2], np.array([dprime_by_cond.mean(0)[1, 2] - np.sort(dprime_err[:, 1, 2])[25], np.sort(dprime_err[:, 1, 2])[-25] - dprime_by_cond.mean(0)[1, 2]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(3.06, dprime_by_cond.mean(0)[1, 3], np.array([dprime_by_cond.mean(0)[1, 3] - np.sort(dprime_err[:, 1, 3])[25], np.sort(dprime_err[:, 1, 3])[-25] - dprime_by_cond.mean(0)[1, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+plt.errorbar(-0.06, dprime_by_cond.mean(0)[0, 0], np.array([dprime_by_cond.mean(0)[0, 0] - np.sort(dprime_err[:, 0, 0])[25], np.sort(dprime_err[:, 0, 0])[-25] - dprime_by_cond.mean(0)[0, 0]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(0.94, dprime_by_cond.mean(0)[0, 1], np.array([dprime_by_cond.mean(0)[0, 1] - np.sort(dprime_err[:, 0, 1])[25], np.sort(dprime_err[:, 0, 1])[-25] - dprime_by_cond.mean(0)[0, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(1.94, dprime_by_cond.mean(0)[0, 2], np.array([dprime_by_cond.mean(0)[0, 2] - np.sort(dprime_err[:, 0, 2])[25], np.sort(dprime_err[:, 0, 2])[-25] - dprime_by_cond.mean(0)[0, 2]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(2.94, dprime_by_cond.mean(0)[0, 3], np.array([dprime_by_cond.mean(0)[0, 3] - np.sort(dprime_err[:, 0, 3])[25], np.sort(dprime_err[:, 0, 3])[-25] - dprime_by_cond.mean(0)[0, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+
+
+plt.subplot(142)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+
+[plt.plot(b[0], ':', c=hsv(co), lw=0.5, ms=1, zorder=-100) for b, co in zip(bias_by_cond, colors)]
+plt.plot(bias_by_cond.mean(0)[0], 'k:', lw=2)
+[plt.plot(b[1], c=hsv(co), lw=0.5, ms=1, zorder=-100) for b, co in zip(bias_by_cond, colors)]
+plt.plot(bias_by_cond.mean(0)[1], 'k', lw=2)
+
+plt.ylabel('Bias')
+plt.xticks([0, 1, 2, 3], ['$AM_{vowelpair}$', '$AM_{vowelpair}\sim AT$','$AT_{vowelpair}\sim AM$', '$AT_{vowelpair}$'], rotation=90)
+plt.xlabel('$V_{vowelpair}$ Match')
+#plt.xticks([0, 1, 2, 3], ['$V_{vowel pair}=AM_{vowel pair}$', '$V_{vowel pair}=AM_{vowel pair}~AT_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}~AM_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}$'])
+#plt.xticks([0, 1, 2, 3], ['$V=AM$', '$V=AM\sim AT$', '$V=AT\sim AM$', '$V=AT$'])
+#plt.grid(axis='y')
+plt.ylim([-2, 2])
+bias_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    bias_err.append(bias_by_cond[subs].mean(0))
+bias_err = np.array(bias_err)
+
+plt.errorbar(0.06, bias_by_cond.mean(0)[1, 0], np.array([bias_by_cond.mean(0)[1, 0] - np.sort(bias_err[:, 1, 0])[25], np.sort(bias_err[:, 1, 0])[-25] - bias_by_cond.mean(0)[1, 0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1.06, bias_by_cond.mean(0)[1, 1], np.array([bias_by_cond.mean(0)[1, 1] - np.sort(bias_err[:, 1, 1])[25], np.sort(bias_err[:, 1, 1])[-25] - bias_by_cond.mean(0)[1, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(2.06, bias_by_cond.mean(0)[1, 2], np.array([bias_by_cond.mean(0)[1, 2] - np.sort(bias_err[:, 1, 2])[25], np.sort(bias_err[:, 1, 2])[-25] - bias_by_cond.mean(0)[1, 2]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(3.06, bias_by_cond.mean(0)[1, 3], np.array([bias_by_cond.mean(0)[1, 3] - np.sort(bias_err[:, 1, 3])[25], np.sort(bias_err[:, 1, 3])[-25] - bias_by_cond.mean(0)[1, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+plt.errorbar(-0.06, bias_by_cond.mean(0)[0, 0], np.array([bias_by_cond.mean(0)[0, 0] - np.sort(bias_err[:, 0, 0])[25], np.sort(bias_err[:, 0, 0])[-25] - bias_by_cond.mean(0)[0, 0]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(0.94, bias_by_cond.mean(0)[0, 1], np.array([bias_by_cond.mean(0)[0, 1] - np.sort(bias_err[:, 0, 1])[25], np.sort(bias_err[:, 0, 1])[-25] - bias_by_cond.mean(0)[0, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(1.94, bias_by_cond.mean(0)[0, 2], np.array([bias_by_cond.mean(0)[0, 2] - np.sort(bias_err[:, 0, 0])[25], np.sort(bias_err[:, 0, 2])[-25] - bias_by_cond.mean(0)[0, 2]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(2.94, bias_by_cond.mean(0)[0, 3], np.array([bias_by_cond.mean(0)[0, 3] - np.sort(bias_err[:, 0, 1])[25], np.sort(bias_err[:, 0, 3])[-25] - bias_by_cond.mean(0)[0, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+
+
+plt.subplot(143)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+
+[plt.plot(100 * h[0], ':', c=hsv(co), lw=0.5, zorder=-100) for h, co in zip(hitrate_by_cond, colors)]
+plt.plot(100 * hitrate_by_cond.mean(0)[0], 'k:', lw=2)
+[plt.plot(100 * h[1],  c=hsv(co), lw=0.5, zorder=-100) for h, co in zip(hitrate_by_cond, colors)]
+plt.plot(100 * hitrate_by_cond.mean(0)[1], 'k', lw=2)
+
+plt.ylabel('Hit Rate (%)')
+#plt.xticks([0, 1, 2, 3], ['$V_{vowel pair}=AM_{vowel pair}$', '$V_{vowel pair}=AM_{vowel pair}~AT_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}~AM_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}$'])
+plt.xticks([0, 1, 2, 3], ['$AM_{vowelpair}$', '$AM_{vowelpair}\sim AT$','$AT_{vowelpair}\sim AM$', '$AT_{vowelpair}$'], rotation=90)
+plt.xlabel('$V_{vowelpair}$ Match')
+plt.ylim([25, 100])
+#plt.grid(axis='y')
+hitrate_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    hitrate_err.append(hitrate_by_cond[subs].mean(0))
+hitrate_err = 100 * np.array(hitrate_err)
+
+plt.errorbar(0.06, 100 * hitrate_by_cond.mean(0)[1, 0], np.array([100 * hitrate_by_cond.mean(0)[1, 0] - np.sort(hitrate_err[:, 1, 0])[25], np.sort(hitrate_err[:, 1, 0])[-25] - 100 * hitrate_by_cond.mean(0)[1, 0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1.06, 100 * hitrate_by_cond.mean(0)[1, 1], np.array([100 * hitrate_by_cond.mean(0)[1, 1] - np.sort(hitrate_err[:, 1, 1])[25], np.sort(hitrate_err[:, 1, 1])[-25] - 100 * hitrate_by_cond.mean(0)[1, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(2.06, 100 * hitrate_by_cond.mean(0)[1, 2], np.array([100 * hitrate_by_cond.mean(0)[1, 2] - np.sort(hitrate_err[:, 1, 2])[25], np.sort(hitrate_err[:, 1, 2])[-25] - 100 * hitrate_by_cond.mean(0)[1, 2]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(3.06, 100 * hitrate_by_cond.mean(0)[1, 3], np.array([100 * hitrate_by_cond.mean(0)[1, 3] - np.sort(hitrate_err[:, 1, 3])[25], np.sort(hitrate_err[:, 1, 3])[-25] - 100 * hitrate_by_cond.mean(0)[1, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+plt.errorbar(-0.06, 100 * hitrate_by_cond.mean(0)[0, 0], np.array([100 * hitrate_by_cond.mean(0)[0, 0] - np.sort(hitrate_err[:, 0, 0])[25], np.sort(hitrate_err[:, 0, 0])[-25] - 100 * hitrate_by_cond.mean(0)[0, 0]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(0.94, 100 * hitrate_by_cond.mean(0)[0, 1], np.array([100 * hitrate_by_cond.mean(0)[0, 1] - np.sort(hitrate_err[:, 0, 1])[25], np.sort(hitrate_err[:, 0, 1])[-25] - 100 * hitrate_by_cond.mean(0)[0, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(1.94, 100 * hitrate_by_cond.mean(0)[0, 2], np.array([100 * hitrate_by_cond.mean(0)[0, 2] - np.sort(hitrate_err[:, 0, 2])[25], np.sort(hitrate_err[:, 0, 2])[-25] - 100 * hitrate_by_cond.mean(0)[0, 2]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(2.94, 100 * hitrate_by_cond.mean(0)[0, 3], np.array([100 * hitrate_by_cond.mean(0)[0, 3] - np.sort(hitrate_err[:, 0, 3])[25], np.sort(hitrate_err[:, 0, 3])[-25] - 100 * hitrate_by_cond.mean(0)[0, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+
+
+plt.subplot(144)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+
+[plt.plot(100 * f[0], ':', c=hsv(co), lw=0.5, ms=1, zorder=-100) for f, co in zip(farate_by_cond, colors)]
+plt.plot(100 * farate_by_cond.mean(0)[0], 'k:', lw=2)
+[plt.plot(100 * f[1], c=hsv(co), lw=0.5, ms=1, zorder=-100) for f, co in zip(farate_by_cond, colors)]
+plt.plot(100 * farate_by_cond.mean(0)[1], 'k', lw=2)
+
+#plt.xticks([0, 1, 2, 3], ['$V_{vowel pair}=AM_{vowel pair}$', '$V_{vowel pair}=AM_{vowel pair}~AT_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}~AM_{vowel}$', '$V_{vowel pair}=AT_{vowel pair}$'])
+plt.xticks([0, 1, 2, 3], ['$AM_{vowelpair}$', '$AM_{vowelpair}\sim AT$','$AT_{vowelpair}\sim AM$', '$AT_{vowelpair}$'], rotation=90)
+plt.xlabel('$V_{vowelpair}$ Match')
+plt.ylim([0, 75])
+#plt.grid(axis='y')
+plt.ylabel('False Alarm Rate (%)')
+
+farate_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    farate_err.append(farate_by_cond[subs].mean(0))
+farate_err = 100 * np.array(farate_err)
+
+plt.errorbar(0.06, 100 * farate_by_cond.mean(0)[1, 0], np.array([100 * farate_by_cond.mean(0)[1, 0] - np.sort(farate_err[:, 1, 0])[25], np.sort(farate_err[:, 1, 0])[-25] - 100 * farate_by_cond.mean(0)[1, 0]])[:, np.newaxis], fmt='o-', ms=ms, mec='k', mfc='w', capsize=3, c='k', label='$V_{timecourse/talker}=$\n$AT_{timecourse/talker}$')
+plt.errorbar(1.06, 100 * farate_by_cond.mean(0)[1, 1], np.array([100 * farate_by_cond.mean(0)[1, 1] - np.sort(farate_err[:, 1, 1])[25], np.sort(farate_err[:, 1, 1])[-25] - 100 * farate_by_cond.mean(0)[1, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(2.06, 100 * farate_by_cond.mean(0)[1, 2], np.array([100 * farate_by_cond.mean(0)[1, 2] - np.sort(farate_err[:, 1, 2])[25], np.sort(farate_err[:, 1, 2])[-25] - 100 * farate_by_cond.mean(0)[1, 2]])[:, np.newaxis], fmt='o-', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(3.06, 100 * farate_by_cond.mean(0)[1, 3], np.array([100 * farate_by_cond.mean(0)[1, 3] - np.sort(farate_err[:, 1, 3])[25], np.sort(farate_err[:, 1, 3])[-25] - 100 * farate_by_cond.mean(0)[1, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+
+plt.errorbar(-0.06, 100 * farate_by_cond.mean(0)[0, 0], np.array([100 * farate_by_cond.mean(0)[0, 0] - np.sort(farate_err[:, 0, 0])[25], np.sort(farate_err[:, 0, 0])[-25] - 100 * farate_by_cond.mean(0)[0, 0]])[:, np.newaxis], fmt='o:', ms=ms, mec='w', mfc='k', capsize=3, c='k', label='$V_{timecourse/talker}=$\n$AM_{timecourse/talker}$')
+plt.errorbar(0.94, 100 * farate_by_cond.mean(0)[0, 1], np.array([100 * farate_by_cond.mean(0)[0, 1] - np.sort(farate_err[:, 0, 1])[25], np.sort(farate_err[:, 0, 1])[-25] - 100 * farate_by_cond.mean(0)[0, 1]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(1.94, 100 * farate_by_cond.mean(0)[0, 2], np.array([100 * farate_by_cond.mean(0)[0, 2] - np.sort(farate_err[:, 0, 2])[25], np.sort(farate_err[:, 0, 2])[-25] - 100 * farate_by_cond.mean(0)[0, 2]])[:, np.newaxis], fmt='o:', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+plt.errorbar(2.94, 100 * farate_by_cond.mean(0)[0, 3], np.array([100 * farate_by_cond.mean(0)[0, 3] - np.sort(farate_err[:, 0, 3])[25], np.sort(farate_err[:, 0, 3])[-25] - 100 * farate_by_cond.mean(0)[0, 3]])[:, np.newaxis], fmt='o', ms=ms, mec='w', mfc='k', capsize=3, c='k')
+
+plt.legend(bbox_to_anchor=(0, 1), prop={'size': 8}, loc='upper left')
+plt.tight_layout()
+plt.subplots_adjust(right=0.95)
+plt.savefig('vowels3.pdf', dpi=600)
+#plt.subplot(155)
+#plt.gca().spines['top'].set_visible(False)
+#plt.gca().spines['right'].set_visible(False)
+#
+#plt.legend([f for f in subjects])
+#plt.ylim([.8, 1.05])
+
+
+plt.figure(6, figsize=(12, 6))
+plt.subplot(121)
+[plt.plot(d[0], ':', c=hsv(co), alpha=0.6) for d, co in zip(dprime_by_cond, colors)]
+plt.plot(dprime_by_cond.mean(0)[0], 'k:', lw=3, label='$V_{timecourse/talker}=AM$', zorder=100)
+[plt.plot(d[1], c=hsv(co), alpha=0.6) for d, co in zip(dprime_by_cond, colors)]
+plt.plot(dprime_by_cond.mean(0)[1], 'k', lw=3, label='$V_{timecourse/talker}=AT$', zorder=100)
+
+plt.ylabel('Sensitivity (d\')')
+plt.xticks([0, 1, 2, 3], ['$V=AM$', '$V=AM\sim AT$', '$V=AT\sim AM$', '$V=AT$'])
+plt.ylim([0, 3.5])
+plt.grid(axis='y')
+plt.tight_layout()
+
+
+plt.subplot(122)
+[plt.plot(b[0], ':', c=hsv(co), alpha=0.6) for b, co in zip(bias_by_cond, colors)]
+plt.plot(bias_by_cond.mean(0)[0], 'k:', lw=3, label='$V_{timecourse/talker}=AM$', zorder=100)
+[plt.plot(b[1], c=hsv(co), alpha=0.6) for b, co in zip(bias_by_cond, colors)]
+plt.plot(bias_by_cond.mean(0)[1], 'k', lw=3, label='$V_{timecourse/talker}=AT$', zorder=100)
+
+plt.ylabel('Bias')
+plt.xticks([0, 1, 2, 3], ['$V=AM$', '$V=AM\sim AT$', '$V=AT\sim AM$', '$V=AT$'])
+plt.grid(axis='y')
+plt.ylim([-1, 1])
+plt.legend()
+plt.tight_layout()
+plt.savefig('vowelsids_dprime_bias.pdf', dpi=300)
+
+plt.figure(7, figsize=(7.2, 3))
+plt.subplot(121)
+[plt.plot(h[0], ':', c=hsv(co), alpha=0.7) for h, co in zip(hitrate_by_cond, colors)]
+plt.plot(hitrate_by_cond.mean(0)[0], 'k:', lw=3, label='$V_{timecourse/talker}=AM$', zorder=100)
+[plt.plot(h[1], c=hsv(co), alpha=0.7) for h, co in zip(hitrate_by_cond, colors)]
+plt.plot(hitrate_by_cond.mean(0)[1], 'k', lw=3, label='$V_{timecourse/talker}=AT$', zorder=100)
+
+plt.ylabel('Hits')
+plt.xticks([0, 1, 2, 3], ['$V=AM$', '$V=AM\sim AT$', '$V=AT\sim AM$', '$V=AT$'])
+plt.ylim([0.4, 1])
+plt.grid(axis='y')
+
+
+plt.subplot(122)
+[plt.plot(f[0], ':', c=hsv(co), alpha=0.7) for f, co in zip(farate_by_cond, colors)]
+plt.plot(farate_by_cond.mean(0)[0], 'k:', lw=3, label='$V_{timecourse/talker}=AM$', zorder=100)
+[plt.plot(f[1], c=hsv(co), alpha=0.7) for f, co in zip(farate_by_cond, colors)]
+plt.plot(farate_by_cond.mean(0)[1], 'k', lw=3, label='$V_{timecourse/talker}=AM$', zorder=100)
+
+plt.xticks([0, 1, 2, 3], ['$V=AM$', '$V=AM\sim AT$', '$V=AT\sim AM$', '$V=AT$'])
+plt.ylim([0, .6])
+plt.grid(axis='y')
+plt.legend()
+
+plt.ylabel('FAs')
+plt.tight_layout()
+plt.savefig('vowelsids_hits_fas.pdf', dpi=300)
+
+
+subject_df = np.array(subject_df).ravel()
+subject_df = np.concatenate([s for s in subject_df])
+all_id_df = np.array(all_id_df).ravel()
+all_id_df = np.concatenate([s for s in all_id_df])
+coherent_df = np.array(coherent_df).ravel()
+coherent_df = np.concatenate([c for c in coherent_df])
+vowel_match_df = np.array(congruent_df).ravel()
+vowel_match_df = np.concatenate([v for v in vowel_match_df])
+congruent_df = coherent_df
+blip_talker_df = np.array(blip_talker_df).ravel()
+blip_talker_df = np.concatenate([t for t in blip_talker_df])
+blip_vowel_df = np.array(blip_vowel_df).ravel()
+blip_vowel_df = np.concatenate([v for v in blip_vowel_df])
+other_vowel_df = np.array(other_vowel_df).ravel()
+other_vowel_df = np.concatenate([m for m in other_vowel_df])
+blips_df = np.array(blips_df).ravel()
+blips_df = np.concatenate([b for b in blips_df])
+responses_df = np.array(responses_df).ravel()
+responses_df = np.concatenate([r for r in responses_df])
+#hits_df = np.array(hits_df).ravel()
+#misses_df = np.array(misses_df).ravel()
+#fas_df = np.array(fas_df).ravel()
+#crs_df = np.array(crs_df).ravel()
+#dprime_by_trial_df = np.array(dprime_by_trial_df).ravel()
+#bias_by_trial_df = np.array(bias_by_trial_df).ravel()
+
+plt.figure(4)
+plt.xticks([0, 1, 2, 3], ['$V=AM$', '$V=AM\sim AT$', '$V=AT\sim AM$', '$V=AT$'])
+[plt.plot(d[0]- d.mean().mean(), 'o:', c=hsv(co), alpha=0.5) for d, co in zip(dprime_by_cond, colors)]
+plt.plot(dprime_by_cond.mean(0)[0] - dprime_by_cond.mean(0).mean().mean(), 'k:', lw=3, label='$V_{timecourse}=AM_{timecourse}$')
+[plt.plot(d[1] - d.mean().mean(), 'o-', c=hsv(co), alpha=0.5) for d, co in zip(dprime_by_cond, colors)]
+plt.plot(dprime_by_cond.mean(0)[1] - dprime_by_cond.mean(0).mean().mean(), 'k', lw=3, label='$V_{timecourse}=AT_{timecourse}$')
+plt.legend()
+plt.ylabel('d\' - mean(d\')')
+
+df = pd.DataFrame(dict(all_exp_id=all_id_df,
+                       subject=subject_df,
+                       coherence=coherent_df,
+                       congruence=congruent_df,
+                       vowel_match=vowel_match_df,
+                       blip_talker=blip_talker_df,
+                       blip_vowel=blip_vowel_df,
+                       other_vowel=other_vowel_df,
+                       blips=blips_df,
+                       not_blips=np.array(np.invert(np.array(blips_df, dtype=bool)), dtype=int),
+                       responses=responses_df,
+                       study=3 * np.ones(responses_df.shape)))
+
+df.to_csv('/home/maddy/Shared VM/exp_vowelids_vowel_data.csv')

@@ -1,7 +1,7 @@
 ---
 # Application paths
-praat: /Applications/Praat.app/Contents/MacOS/Praat
-ffmpeg: /Applications/ffmpeg
+praat: /usr/bin/praat
+ffmpeg: /usr/bin/ffmpeg
 # Praat script paths
 analysis: praatscripts/analysis.praat
 extraction: praatscripts/extraction.praat

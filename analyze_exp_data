@@ -1,0 +1,595 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Sep 10 14:02:00 2021
+
+@author: maddy
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from expyfun.io import read_tab, read_hdf5, read_tab_raw
+import ast
+
+from expyfun.analyze import dprime
+import pandas as pd
+
+data_path = '/home/maddy/Code/data_analysis/Vowels/vowel_faces/raw_data/'
+fnames = ['Vowels002_2021-09-21 11_04_55.773616.tab',
+          'Vowels003_2021-09-24 15_27_54.994323.tab',
+          'Vowels005_2021-10-06 09_00_47.308826.tab',
+          'Vowels006_2021-10-07 17_28_21.218469.tab',
+          'Vowels007_2021-10-15 15_46_50.724742.tab',
+          'Vowels008_2021-10-15 16_53_54.850667.tab',
+          'Vowels009_2021-10-16 14_05_35.985690.tab',
+          'Vowels010_2021-10-18 10_03_39.190016.tab',
+          'Vowels011_2021-10-18 11_07_28.621964.tab',
+          'Vowels015_2021-10-28 15_23_24.803321.tab',
+          'Vowels016_2021-10-28 16_27_05.364561.tab',
+          'Vowels017_2021-10-30 14_44_39.821104.tab',
+          'Vowels013_2021-11-01 14_19_26.897211.tab',
+          'Vowels018_2021-11-01 15_33_16.279161.tab',
+          'Vowels019_2021-11-01 18_51_49.845042.tab',
+          'Vowels021_2021-11-09 18_16_10.131217.tab',
+          'Vowels022_2021-11-11 16_09_05.169798.tab',
+          #'Vowels023_2021-11-19 15_42_23.588156.tab', # excluded, overall d'=0.62
+          'Vowels024_2021-11-29 15_55_01.763946.tab',
+          'Vowels025_2021-12-08 16_43_59.234375.tab',
+          'Vowels026_2021-12-10 16_40_07.518412.tab',
+          'Vowels027_2021-12-13 15_50_35.072600.tab',
+          'Vowels028_2021-12-17 10_39_01.790736.tab',
+          'Vowels029_2022-01-10 12_06_55.186416.tab',
+          'Vowels030_2022-01-10 15_47_48.175220.tab']
+
+from matplotlib import rcParams
+from matplotlib import rc
+from matplotlib.patches import Rectangle
+plt.rcParams['text.usetex'] = False
+fontsize=14
+#rc('text', usetex=False)
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=fontsize)
+
+dataset = 'v6'
+from matplotlib import cm
+n_resamp = 1000
+n_bins = 24
+hsv = cm.get_cmap('rainbow', len(fnames))
+
+colors = np.linspace(0, 1, len(fnames))
+subjects = [f[:9] for f in fnames]
+dprime_by_cond = np.zeros((len(subjects), 2))
+bias_by_cond = np.zeros((len(subjects), 2))
+hitrate_by_cond = np.zeros((len(subjects), 2))
+farate_by_cond = np.zeros((len(subjects), 2))
+
+dprime_by_cond_re = np.zeros((len(subjects), n_resamp, 2))
+bias_by_cond_re = np.zeros((len(subjects), n_resamp, 2))
+hitrate_by_cond_re = np.zeros((len(subjects), n_resamp, 2))
+farate_by_cond_re = np.zeros((len(subjects), n_resamp, 2))
+vis_hit_re = np.zeros((n_resamp,))
+
+
+subject_df = []
+coherent_df = []
+blip_talker_df = []
+blip_vowel_df = []
+other_vowel_df = []
+#hits_df = []
+#misses_df = []
+#fas_df = []
+#crs_df = []
+#dprime_by_trial_df = []
+#bias_by_trial_df = []
+blips_df = []
+responses_df = []
+
+fnames_didntpass = ['Vowels001_2021-09-20 09_46_53.454169',
+                    'Vowels004_2021-09-25 14_45_30.222484',
+                    'Vowels012_2021-10-19 10_17_07.899185',
+                    'Vowels014_2021-10-25 15_46_43.910110',
+                    'Vowels020_2021-11-08 15_51_18.414681']
+#subjects_didntpass = [f[:9] for f in fnames_didntpass]
+#for i, (fname, sub) in enumerate(zip(fnames_didntpass, subjects_didntpass)):
+#    fontsize=8
+#    #rc('text', usetex=False)
+#    rcParams['font.sans-serif'] = "Arial"
+#    plt.rc('font', size=fontsize)
+#    data2 = read_tab_raw(data_path + fname + '.tab')
+#    aud_dprime = np.array(data2)[np.where([d[1]=='screen_text' for d in data2])[0]][22][-1][17:25]
+#    aud_dprime = float(aud_dprime)
+#    vis_hit = np.array(data2)[np.where([d[1]=='screen_text' for d in data2])[0]][22][-1][-5:]
+#    vis_hit = float(vis_hit) / 100
+#    plt.figure(i + 130)
+#    plt.plot(0.5, aud_dprime, 'o')
+#    plt.plot(0.5, vis_hit, 'o')
+#    plt.plot([0, 1], [0.7, 0.7], 'k')
+#    plt.ylim([0, 3.75])
+#    plt.legend(('Aud d\'', 'Vis Hitrate', 'Threshold'))
+#    plt.ylabel('Training Values')
+#    plt.title('Subject ' + sub)
+#    plt.tight_layout()
+#    plt.savefig('ind_data_' + sub + '.pdf')
+    
+    
+for i, (fname, sub) in enumerate(zip(fnames, subjects)):
+    data = read_tab(data_path + fname)
+    trial_ids = np.array([d['trial_id'][0][0] for d in data])
+    main_trials = np.array([len(t) > 25 for t in trial_ids])
+    
+#    blips_raw = read_hdf5('trial_blips.hdf5')
+#    trl_fnames = []
+#    talkers = np.array(['Ross', 'Maddy'])
+#    vowels = np.array(['ao', 'au', 'eo', 'eu', 'iu'])
+#    for mask_l, rep in enumerate(['a', 'b', 'c', 'd']):
+#        for talker_match in [True]: # ** for full vowels, [True, False] **
+#            for vowel_match in [True]: # ** for full vowels, [True, False] **
+#                for mask_k, coherent in enumerate([True, False]):
+#                    talker_match = coherent
+#                    vowel_match = coherent
+#                    for t in np.arange(len(talkers), dtype=bool):
+#                        for v in np.arange(len(vowels)):
+#                            trl_fnames.append('{}_{}_'.format(talkers[int(t)], vowels[v]) + 'talker{}'.format(int(talker_match)) + 'vowel{}'.format(int(vowel_match)) + 'coherent{}'.format(int(coherent)) + rep)
+#    blips = []
+#    for trl_id in trial_ids[main_trials]:
+#        ind = np.where([trl_id[:-10] == t for t in trl_fnames])[0][0]
+#        blips.append(blips_raw[ind])
+#    blips = np.array(blips)
+    
+    target_talker = np.array(['Ross' if t[0] == 'R' else 'Maddy' for t in trial_ids[main_trials]])
+    target_vowel = np.array([t[-36:-34] for t in trial_ids[main_trials]])
+    masker_vowel = np.array([t[-2:] for t in trial_ids[main_trials]])
+    coherent = np.array([1 if t[-12]=='1' else 0 for t in trial_ids[main_trials]])
+    
+    blips = np.array([ast.literal_eval(d['blips'][0][0]) for d in data])[main_trials]
+    
+    responses = np.array([d['responses'][0][0]for d in data])[main_trials]
+    responses = [ast.literal_eval(r) for r in responses]
+    
+    target_blips = [b[0] for b in blips]
+    masker_blips = [b[1] for b in blips]
+    visual_blips = [b[2] for b in blips]
+    
+    hits = np.array([sum([any([(r > (b)) and (r < (b + 1)) for r in response]) for b in blip]) for blip, response in zip(target_blips, responses)])
+    total_target = np.array([len(b) for b in target_blips])
+    
+    fas = np.array([sum([any([(r > b) and (r < (b + 1)) for r in response]) for b in blip]) for blip, response in zip(masker_blips, responses)])
+    total_masker = np.array([len(b) for b in masker_blips])
+    
+    misses = np.array([tot - hit for tot, hit in zip(total_target, hits)])
+    crs = np.array([tot - fa for tot, fa in zip(total_masker, fas)])
+    
+    vis_hit = np.array([sum([any([(r > b) and (r < (b + 1)) for r in response]) for b in blip]) for blip, response in zip(visual_blips, responses)])
+    total_vis = np.array([len(b) for b in visual_blips])
+    vis_hit_rate = np.array([vis / tot for vis, tot in zip(vis_hit, total_vis)])
+    total_vis_hit_rate = sum(vis_hit) / sum(total_vis)
+    for re in np.arange(n_resamp):
+        vis_inds = np.random.choice(np.arange(sum(main_trials)), (sum(main_trials),))
+        vis_hit_re[re] = sum(vis_hit[vis_inds]) / sum(total_vis[vis_inds])
+    
+    dprime_by_trial = [dprime([h, m, f, c]) for h, m, f, c in zip(hits, misses, fas, crs)]
+    bias_by_trial = [dprime([h, m, f, c], return_bias=True)[-1] for h, m, f, c in zip(hits, misses, fas, crs)]
+    
+    for trl in np.arange(80):
+        blip_num = hits[trl] + fas[trl] + misses[trl] + crs[trl]
+        subject_df.append(np.array(blip_num * [sub]))
+#        coherent_df.append(np.array(blip_num * [coherent[trl]]))
+        if coherent[trl]:
+            oth_coh = 0
+        else:
+            oth_coh = 1
+        coherent_df.append(np.array(np.array((hits[trl] * [coherent[trl]]) + (fas[trl] * [oth_coh]) + (crs[trl] * [oth_coh]) + (misses[trl] * [coherent[trl]]))))
+        
+        blips_df.append(np.array((hits[trl] * [1]) + (fas[trl] * [0]) + (crs[trl] * [0]) + (misses[trl] * [1])))
+        responses_df.append(np.array((hits[trl] * [1]) + (fas[trl] * [1]) + (crs[trl] * [0]) + (misses[trl] * [0])))
+        
+        if target_talker[trl] == 'Ross':
+            masker_talker = 'Maddy'
+        else:
+            masker_talker = 'Ross'
+        blip_talker_df.append(np.array((hits[trl] * [target_talker[trl]]) + (fas[trl] * [masker_talker]) + (crs[trl] * [masker_talker]) + (misses[trl] * [target_talker[trl]])))
+        blip_vowel_df.append(np.array((hits[trl] * [target_vowel[trl]]) + (fas[trl] * [masker_vowel[trl]]) + (crs[trl] * [masker_vowel[trl]]) + (misses[trl] * [target_vowel[trl]])))
+        other_vowel_df.append(np.array((hits[trl] * [masker_vowel[trl]]) + (fas[trl] * [target_vowel[trl]]) + (crs[trl] * [target_vowel[trl]]) + (misses[trl] * [masker_vowel[trl]])))
+#        hits_df.append(hits)
+#        misses_df.append(misses)
+#        fas_df.append(fas)
+#        crs_df.append(crs)
+#        dprime_by_trial_df.append(dprime_by_trial)
+#        bias_by_trial_df.append(bias_by_trial)
+    
+    for coh in np.arange(2):
+        inds = coherent==coh
+        
+        dprime_by_cond[i, coh] = dprime([sum(hits[inds]), sum(misses[inds]), sum(fas[inds]), sum(crs[inds])])
+        bias_by_cond[i, coh] = dprime([sum(hits[inds]), sum(misses[inds]), sum(fas[inds]), sum(crs[inds])], return_bias=True)[-1]
+        hitrate_by_cond[i, coh] = sum(hits[inds]) / (sum(hits[inds]) + sum(misses[inds]))
+        farate_by_cond[i, coh] = sum(fas[inds]) / (sum(fas[inds]) + sum(crs[inds]))
+        
+        for re in np.arange(n_resamp):
+            inds_re = np.where(inds)[0]
+            inds_re = np.random.choice(inds_re, inds_re.shape)
+            dprime_by_cond_re[i, re, coh] = dprime([sum(hits[inds_re]), sum(misses[inds_re]), sum(fas[inds_re]), sum(crs[inds_re])])
+            bias_by_cond_re[i, re, coh] = dprime([sum(hits[inds_re]), sum(misses[inds_re]), sum(fas[inds_re]), sum(crs[inds_re])], return_bias=True)[-1]
+            hitrate_by_cond_re[i, re, coh] = sum(hits[inds_re]) / (sum(hits[inds_re]) + sum(misses[inds_re]))
+            farate_by_cond_re[i, re, coh] = sum(fas[inds_re]) / (sum(fas[inds_re]) + sum(crs[inds_re]))
+    fontsize=8
+    #rc('text', usetex=False)
+#    rcParams['font.sans-serif'] = "Arial"
+#    plt.rc('font', size=fontsize)
+#    data2 = read_tab_raw(data_path + fname)
+#    aud_dprime = np.array(data2)[np.where([d[1]=='screen_text' for d in data2])[0]][22][-1][17:25]
+#    aud_dprime = float(aud_dprime)
+#    vis_hit = np.array(data2)[np.where([d[1]=='screen_text' for d in data2])[0]][22][-1][-5:]
+#    vis_hit = float(vis_hit) / 100
+#    plt.figure(i + 100)
+#    plt.subplot(231)
+#    plt.plot(0.5, aud_dprime, 'o')
+#    plt.plot(0.5, vis_hit, 'o')
+#    plt.plot([0, 1], [0.7, 0.7], 'k')
+#    plt.ylim([.6, 3.75])
+#    plt.legend(('Aud d\'', 'Vis Hitrate', 'Threshold'))
+#    plt.ylabel('Training Values')
+#    plt.subplot(232)
+#    plt.plot(dprime_by_cond[i], 'k-o')
+#    plt.xlabel('Coherence')
+#    plt.ylabel('d\'')
+#    plt.ylim([.7, 3.75])
+#    plt.title('Subject ' + sub)
+#    plt.subplot(233)
+#    plt.plot(bias_by_cond[i], 'k-o')
+#    plt.xlabel('Coherence')
+#    plt.ylabel('bias')
+#    plt.ylim([-.25, 1.25])
+#    plt.subplot(235)
+#    plt.plot(hitrate_by_cond[i], 'k-o')
+#    plt.xlabel('Coherence')
+#    plt.ylabel('hit rate')
+#    plt.ylim([.5, 1])
+#    plt.subplot(236)
+#    plt.plot(farate_by_cond[i], 'k-o')
+#    plt.xlabel('Coherence')
+#    plt.ylabel('FA rate')
+#    plt.ylim([0, .5])
+#    plt.subplot(234)
+#    plt.plot(vis_hit_rate.mean(), 'ko')
+#    plt.xlabel('Coherence')
+#    plt.ylabel('Visual hit rate')
+#    plt.ylim([.7, 1])
+#    plt.tight_layout()
+#    plt.savefig('ind_data_' + sub + '.pdf')
+
+    fontsize=14
+    #rc('text', usetex=False)
+    rcParams['font.sans-serif'] = "Arial"
+    plt.rc('font', size=fontsize)
+    plt.figure(1, figsize=(11.5, 4.5))
+    plt.subplot(155)
+    plt.plot(np.random.rand() - 0.5, total_vis_hit_rate, 'o', c=hsv(colors[i]))
+    plt.xticks([], [])
+    plt.title('visual hit rate')
+    
+    plt.figure(4, figsize=(11.5, 4.5))
+    plt.subplot(155)
+    vis_err = np.sort(vis_hit_re)
+    x_v = np.random.rand()
+    plt.plot(x_v - 0.5, total_vis_hit_rate, 'o', c=hsv(colors[i]))
+    plt.errorbar(x_v - 0.5, total_vis_hit_rate, np.array([total_vis_hit_rate-vis_err[25], vis_err[-25]-total_vis_hit_rate])[:, np.newaxis], fmt='', ecolor=hsv(colors[i]))
+    plt.title('visual hit rate')
+    
+plt.figure(2, figsize=(5, 4.5))
+plt.subplot(121)
+[plt.plot(d, c=hsv(co), alpha=0.6) for d, co in zip(dprime_by_cond, colors)]
+#plt.xticks([0, 1], {'Coh', 'InCoh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.plot(dprime_by_cond.mean(0), 'k', lw=3)
+plt.ylabel('Sensitivity (d\')')
+plt.grid(axis='y')
+plt.ylim([0, 3.5])
+plt.subplot(122)
+[plt.plot(b, c=hsv(co), alpha=0.6) for b, co in zip(bias_by_cond, colors)]
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.ylabel('Bias')
+plt.ylim([-1, 1])
+plt.plot(bias_by_cond.mean(0), 'k', lw=3)
+plt.grid(axis='y')
+plt.tight_layout()
+plt.savefig('vowels_dprime_bias.pdf', dpi=300)
+
+plt.figure(3, figsize=(5, 4.5))
+plt.subplot(121)
+[plt.plot(h, c=hsv(co), alpha=0.6) for h, co in zip(hitrate_by_cond, colors)]
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.ylabel('Hit Rate')
+plt.ylim([0.4, 1])
+plt.grid(axis='y')
+plt.plot(hitrate_by_cond.mean(0), 'k', lw=3)
+plt.subplot(122)
+[plt.plot(f, c=hsv(co), alpha=0.6) for f, co in zip(farate_by_cond, colors)]
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.ylabel('False Alarm Rate')
+plt.ylim([0, 0.6])
+plt.grid(axis='y')
+plt.plot(farate_by_cond.mean(0), 'k', lw=3)
+plt.tight_layout()
+plt.savefig('vowels_hits_fas.pdf', dpi=300)
+
+plt.figure(1)
+plt.subplot(151)
+[plt.plot(d, c=hsv(co)) for d, co in zip(dprime_by_cond, colors)]
+#plt.xticks([0, 1], {'Coh', 'InCoh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.plot(dprime_by_cond.mean(0), 'k', lw=3)
+plt.title('dprime')
+plt.ylim([0, 3.5])
+plt.subplot(152)
+[plt.plot(b, c=hsv(co)) for b, co in zip(bias_by_cond, colors)]
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.ylim([-1.25, 1.25])
+plt.title('bias')
+plt.plot(bias_by_cond.mean(0), 'k', lw=3)
+
+#plt.figure(2)
+plt.subplot(153)
+[plt.plot(h, c=hsv(co)) for h, co in zip(hitrate_by_cond, colors)]
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.title('hits')
+plt.plot(hitrate_by_cond.mean(0), 'k', lw=3)
+plt.ylim([.4, 1])
+plt.subplot(154)
+[plt.plot(f, c=hsv(co)) for f, co in zip(farate_by_cond, colors)]
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.title('fas')
+plt.ylim([0, .6])
+plt.plot(farate_by_cond.mean(0), 'k', lw=3)
+
+plt.subplot(155)
+fontsize=8
+#rc('text', usetex=False)
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=fontsize)
+plt.legend([f[6:9] for f in fnames])
+plt.ylim([.8, 1.05])
+plt.tight_layout()
+plt.savefig('vowels_everything.pdf', dpi=300)
+
+plt.figure(4)
+fontsize=14
+#rc('text', usetex=False)
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=fontsize)
+plt.subplot(151)
+x_shifts = (np.random.rand(len(subjects),)-0.5) * 0.1
+[plt.plot([x, 1 + x], d, c=hsv(co), alpha=0.5) for d, co, x in zip(dprime_by_cond, colors, x_shifts)]
+[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(dprime_by_cond[:, 0], dprime_by_cond_re[:,:,0], colors, x_shifts)]
+[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(dprime_by_cond[:, 1], dprime_by_cond_re[:,:,1], colors, x_shifts)]
+#plt.xticks([0, 1], {'Coh', 'InCoh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.plot(dprime_by_cond.mean(0), 'k', lw=3)
+dprime_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    dprime_err.append(dprime_by_cond[subs].mean(0))
+dprime_err = np.array(dprime_err)
+plt.errorbar(0, dprime_by_cond.mean(0)[0], np.array([dprime_by_cond.mean(0)[0] - np.sort(dprime_err[:, 0])[25], np.sort(dprime_err[:, 0])[-25] - dprime_by_cond.mean(0)[0]])[:, np.newaxis], fmt='', ecolor='k')
+plt.errorbar(1, dprime_by_cond.mean(0)[1], np.array([dprime_by_cond.mean(0)[1] - np.sort(dprime_err[:, 1])[25], np.sort(dprime_err[:, 1])[-25] - dprime_by_cond.mean(0)[1]])[:, np.newaxis], fmt='', ecolor='k')
+
+plt.title('dprime')
+plt.subplot(152)
+[plt.plot([x, 1 + x], d, c=hsv(co), alpha=0.5) for d, co, x in zip(bias_by_cond, colors, x_shifts)]
+[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(bias_by_cond[:, 0], bias_by_cond_re[:,:,0], colors, x_shifts)]
+[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(bias_by_cond[:, 1], bias_by_cond_re[:,:,1], colors, x_shifts)]
+
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.title('bias')
+plt.plot(bias_by_cond.mean(0), 'k', lw=3)
+bias_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    bias_err.append(bias_by_cond[subs].mean(0))
+bias_err = np.array(bias_err)
+plt.errorbar(0, bias_by_cond.mean(0)[0], np.array([bias_by_cond.mean(0)[0] - np.sort(bias_err[:, 0])[25], np.sort(bias_err[:, 0])[-25] - bias_by_cond.mean(0)[0]])[:, np.newaxis], fmt='', ecolor='k')
+plt.errorbar(1, bias_by_cond.mean(0)[1], np.array([bias_by_cond.mean(0)[1] - np.sort(bias_err[:, 1])[25], np.sort(bias_err[:, 1])[-25] - bias_by_cond.mean(0)[1]])[:, np.newaxis], fmt='', ecolor='k')
+
+#plt.figure(2)
+plt.subplot(153)
+[plt.plot([x, 1 + x], d, c=hsv(co), alpha=0.5) for d, co, x in zip(hitrate_by_cond, colors, x_shifts)]
+[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(hitrate_by_cond[:, 0], hitrate_by_cond_re[:,:,0], colors, x_shifts)]
+[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(hitrate_by_cond[:, 1], hitrate_by_cond_re[:,:,1], colors, x_shifts)]
+
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.title('hits')
+plt.plot(hitrate_by_cond.mean(0), 'k', lw=3)
+
+hit_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    hit_err.append(hitrate_by_cond[subs].mean(0))
+hit_err = np.array(hit_err)
+plt.errorbar(0, hitrate_by_cond.mean(0)[0], np.array([hitrate_by_cond.mean(0)[0] - np.sort(hit_err[:, 0])[25], np.sort(hit_err[:, 0])[-25] - hitrate_by_cond.mean(0)[0]])[:, np.newaxis], fmt='', ecolor='k')
+plt.errorbar(1, hitrate_by_cond.mean(0)[1], np.array([hitrate_by_cond.mean(0)[1] - np.sort(hit_err[:, 1])[25], np.sort(hit_err[:, 1])[-25] - hitrate_by_cond.mean(0)[1]])[:, np.newaxis], fmt='', ecolor='k')
+
+
+plt.subplot(154)
+[plt.plot([x, 1 + x], d, c=hsv(co), alpha=0.5) for d, co, x in zip(farate_by_cond, colors, x_shifts)]
+[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(farate_by_cond[:, 0], farate_by_cond_re[:,:,0], colors, x_shifts)]
+[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(farate_by_cond[:, 1], farate_by_cond_re[:,:,1], colors, x_shifts)]
+
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xticks([0, 1], ['$V=A_M$', '$V=A_T$'])
+plt.title('fas')
+plt.plot(farate_by_cond.mean(0), 'k', lw=3)
+
+fa_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    fa_err.append(farate_by_cond[subs].mean(0))
+fa_err = np.array(fa_err)
+plt.errorbar(0, farate_by_cond.mean(0)[0], np.array([farate_by_cond.mean(0)[0] - np.sort(fa_err[:, 0])[25], np.sort(fa_err[:, 0])[-25] - farate_by_cond.mean(0)[0]])[:, np.newaxis], fmt='', ecolor='k')
+plt.errorbar(1, farate_by_cond.mean(0)[1], np.array([farate_by_cond.mean(0)[1] - np.sort(fa_err[:, 1])[25], np.sort(fa_err[:, 1])[-25] - farate_by_cond.mean(0)[1]])[:, np.newaxis], fmt='', ecolor='k')
+
+
+plt.subplot(155)
+fontsize=8
+#rc('text', usetex=False)
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=fontsize)
+plt.legend([f[6:9] for f in fnames])
+plt.tight_layout()
+plt.savefig('vowels_everything.pdf', dpi=300)
+
+plt.figure(7, figsize=(7.2, 3))
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=10)
+plt.rc('axes', titlesize=10)
+from matplotlib import cm
+ms=4
+n=0
+hsv = cm.get_cmap('rainbow', 100)
+data_color = [hsv(i) for i in np.linspace(0, 1, 6)]
+from matplotlib import rcParams
+rcParams['font.sans-serif'] = "Arial"
+plt.rc('font', size=10)
+plt.rc('axes', titlesize=10)
+ms=4
+plt.subplot(141)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+x_shifts = (np.random.rand(len(subjects),)-0.5) * 0.1
+[plt.plot([x, 1 + x], d, '-', ms=1, c=hsv(co), lw=0.5, zorder=-100) for d, co, x in zip(dprime_by_cond, colors, x_shifts)]
+#[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(dprime_by_cond[:, 0], dprime_by_cond_re[:,:,0], colors, x_shifts)]
+#[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(dprime_by_cond[:, 1], dprime_by_cond_re[:,:,1], colors, x_shifts)]
+#plt.xticks([0, 1], {'Coh', 'InCoh'})
+plt.xlabel('Video Match')
+plt.xticks([0, 1], ['Masker', 'Target'])
+plt.ylim([0, 4])
+plt.plot(dprime_by_cond.mean(0), 'k')
+dprime_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    dprime_err.append(dprime_by_cond[subs].mean(0))
+dprime_err = np.array(dprime_err)
+plt.errorbar(0, dprime_by_cond.mean(0)[0], np.array([dprime_by_cond.mean(0)[0] - np.sort(dprime_err[:, 0])[25], np.sort(dprime_err[:, 0])[-25] - dprime_by_cond.mean(0)[0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1, dprime_by_cond.mean(0)[1], np.array([dprime_by_cond.mean(0)[1] - np.sort(dprime_err[:, 1])[25], np.sort(dprime_err[:, 1])[-25] - dprime_by_cond.mean(0)[1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+plt.ylabel('Sensitivity (d\')')
+plt.subplot(142)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+[plt.plot([x, 1 + x], d, '-', ms=1, c=hsv(co), lw=0.5, zorder=-100) for d, co, x in zip(bias_by_cond, colors, x_shifts)]
+#[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(bias_by_cond[:, 0], bias_by_cond_re[:,:,0], colors, x_shifts)]
+#[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(bias_by_cond[:, 1], bias_by_cond_re[:,:,1], colors, x_shifts)]
+
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xlabel('Video Match')
+plt.xticks([0, 1], ['Masker', 'Target'])
+plt.ylabel('Bias')
+plt.ylim([-2, 2])
+plt.plot(bias_by_cond.mean(0), 'k')
+bias_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    bias_err.append(bias_by_cond[subs].mean(0))
+bias_err = np.array(bias_err)
+plt.errorbar(0, bias_by_cond.mean(0)[0], np.array([bias_by_cond.mean(0)[0] - np.sort(bias_err[:, 0])[25], np.sort(bias_err[:, 0])[-25] - bias_by_cond.mean(0)[0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1, bias_by_cond.mean(0)[1], np.array([bias_by_cond.mean(0)[1] - np.sort(bias_err[:, 1])[25], np.sort(bias_err[:, 1])[-25] - bias_by_cond.mean(0)[1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+#plt.figure(2)
+plt.subplot(143)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+[plt.plot([x, 1 + x], 100 * d,'-', ms=1,  c=hsv(co), lw=0.5, zorder=-100) for d, co, x in zip(hitrate_by_cond, colors, x_shifts)]
+#[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(hitrate_by_cond[:, 0], hitrate_by_cond_re[:,:,0], colors, x_shifts)]
+#[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(hitrate_by_cond[:, 1], hitrate_by_cond_re[:,:,1], colors, x_shifts)]
+
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xlabel('Video Match')
+plt.xticks([0, 1], ['Masker', 'Target'])
+plt.ylabel('Hit Rate (\%)')
+plt.ylim([25, 100])
+plt.plot(100 * hitrate_by_cond.mean(0), 'k')
+
+hit_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    hit_err.append(hitrate_by_cond[subs].mean(0))
+hit_err = np.array(hit_err)
+plt.errorbar(0, 100 * hitrate_by_cond.mean(0)[0], 100 * np.array([hitrate_by_cond.mean(0)[0] - np.sort(hit_err[:, 0])[25], np.sort(hit_err[:, 0])[-25] - hitrate_by_cond.mean(0)[0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1, 100 * hitrate_by_cond.mean(0)[1], 100 * np.array([hitrate_by_cond.mean(0)[1] - np.sort(hit_err[:, 1])[25], np.sort(hit_err[:, 1])[-25] - hitrate_by_cond.mean(0)[1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+
+
+plt.subplot(144)
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+[plt.plot([x, 1 + x], 100 * d, '-', ms=1, c=hsv(co), lw=0.5, zorder=-100) for d, co, x in zip(farate_by_cond, colors, x_shifts)]
+#[plt.errorbar(x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(farate_by_cond[:, 0], farate_by_cond_re[:,:,0], colors, x_shifts)]
+#[plt.errorbar(1 + x, dd, np.array([dd- np.sort(d)[25], np.sort(d)[-25] - dd])[:, np.newaxis], fmt='', ecolor=hsv(co), alpha=0.5) for dd, d, co, x in zip(farate_by_cond[:, 1], farate_by_cond_re[:,:,1], colors, x_shifts)]
+
+#plt.xticks([0, 1], {'Incoh', 'Coh'})
+plt.xlabel('Video Match')
+plt.xticks([0, 1], ['Masker', 'Target'])
+plt.ylabel('False Alarm Rate (\%)')
+plt.plot(100 * farate_by_cond.mean(0), 'k')
+plt.ylim([0, 75])
+fa_err = []
+for n in np.arange(n_resamp):
+    subs = np.random.choice(np.arange(len(subjects)), (len(subjects),))
+    fa_err.append(farate_by_cond[subs].mean(0))
+fa_err = np.array(fa_err)
+plt.errorbar(0, 100 * farate_by_cond.mean(0)[0], 100 * np.array([farate_by_cond.mean(0)[0] - np.sort(fa_err[:, 0])[25], np.sort(fa_err[:, 0])[-25] - farate_by_cond.mean(0)[0]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.errorbar(1, 100 * farate_by_cond.mean(0)[1], 100 * np.array([farate_by_cond.mean(0)[1] - np.sort(fa_err[:, 1])[25], np.sort(fa_err[:, 1])[-25] - farate_by_cond.mean(0)[1]])[:, np.newaxis], fmt='o', ms=ms, mec='k', mfc='w', capsize=3, c='k')
+plt.tight_layout()
+plt.savefig('vowels_1.pdf', dpi=600)
+subject_df = np.array(subject_df).ravel()
+subject_df = np.concatenate([s for s in subject_df])
+coherent_df = np.array(coherent_df).ravel()
+coherent_df = np.concatenate([c for c in coherent_df])
+blip_talker_df = np.array(blip_talker_df).ravel()
+blip_talker_df = np.concatenate([t for t in blip_talker_df])
+blip_vowel_df = np.array(blip_vowel_df).ravel()
+blip_vowel_df = np.concatenate([v for v in blip_vowel_df])
+other_vowel_df = np.array(other_vowel_df).ravel()
+other_vowel_df = np.concatenate([m for m in other_vowel_df])
+blips_df = np.array(blips_df).ravel()
+blips_df = np.concatenate([b for b in blips_df])
+responses_df = np.array(responses_df).ravel()
+responses_df = np.concatenate([r for r in responses_df])
+vowel_match_df= []
+for main, other, coh, in zip(blip_vowel_df, other_vowel_df, coherent_df):
+    if coh:
+        vowel_match_df.append(2)
+    else:
+        if any([m in other for m in main]):
+            vowel_match_df.append(1)
+        else:
+            vowel_match_df.append(0)
+vowel_match_df = np.array(vowel_match_df).ravel()
+
+#hits_df = np.array(hits_df).ravel()
+#misses_df = np.array(misses_df).ravel()
+#fas_df = np.array(fas_df).ravel()
+#crs_df = np.array(crs_df).ravel()
+#dprime_by_trial_df = np.array(dprime_by_trial_df).ravel()
+#bias_by_trial_df = np.array(bias_by_trial_df).ravel()
+
+df = pd.DataFrame(dict(all_exp_id=[s[6:9] for s in subject_df],
+                       subject=subject_df,
+                       coherence=coherent_df,
+                       congruence=coherent_df,
+                       vowel_match=vowel_match_df,
+                       blip_talker=blip_talker_df,
+                       blip_vowel=blip_vowel_df,
+                       other_vowel=other_vowel_df,
+                       blips=blips_df,
+                       not_blips=np.array(np.invert(np.array(blips_df, dtype=bool)), dtype=int),
+                       responses=responses_df,
+                       study=np.ones(responses_df.shape)))
+
+df.to_csv('/home/maddy/Shared VM/exp_vowel_data.csv')

@@ -21,7 +21,7 @@ plt.ion()
 
 def bark2hz(z):
     return 1960. * (0.53+z) / (26.28-z)
-    
+
 def hz2bark(f):
     return 26.81 * f / (1960.+f) - 0.53
 
@@ -30,16 +30,16 @@ def loadSettings(path):
         path = os.path.join(path,'settings.yaml')
     with open(path,'r') as f:
         return yaml.load(f)
-    
+
 def saveSettings(path,data):
     with open(os.path.join(path,'settings.yaml'),'w') as f:
         yaml.dump(data,f)
-        
+
 def loadVowelData(talkerID,vowelID):
     return np.load(os.path.join('talkers',talkerID,vowelID,'data.npz'))
-        
+
 def saveVowelData(talkerID,vowelID,data):
-    np.savez(os.path.join('talkers',talkerID,vowelID,'data.npz'),**data)  
+    np.savez(os.path.join('talkers',talkerID,vowelID,'data.npz'),**data)
 
 mypath = os.path.dirname(os.path.abspath(__file__))
 settings = loadSettings('settings.yaml')
@@ -48,7 +48,7 @@ settings = loadSettings('settings.yaml')
 
 #class rawData(dict):
 #    def save(self,talkerID=self.talkerID,vowelID=self.vowelID):
-        
+
 
 # %% analysis and extraction step
 
@@ -61,10 +61,10 @@ def extractFramesAndRawFormantTracks(inputFile,talkerID,vowelID,
     framespath = os.path.join(talkerpath,vowelID)
     if not os.path.exists(framespath):
         os.mkdir(framespath)
-    
+
     gridName = os.path.join('tmp','tmp.FormantGrid')
     tempAudio = os.path.join('tmp','tmp.wav')
-    
+
     #extract frames to PNG, audio to file
     args = [settings['ffmpeg'],
             '-i',
@@ -76,15 +76,15 @@ def extractFramesAndRawFormantTracks(inputFile,talkerID,vowelID,
     
     pipe = Popen(args,stdin = PIPE, stdout = PIPE, stderr = PIPE)
     _,err = pipe.communicate()
-    
-    match = search(r"(\d*\.?\d*?) tbr",err)
-    framerate = float(match.group(1))
-    
+#    match = search(r"(\d*\.?\d*?) tbr",err)
+#    framerate = float(match.group(1))
+    framerate = 59.94
+
     saveSettings(framespath,{
             'image filename pattern':outputFileFormat,
             'framerate':framerate
             })
-    
+
     #generate FormantGrid from audio file
     args = [settings['praat'],
             '--run',
@@ -94,20 +94,19 @@ def extractFramesAndRawFormantTracks(inputFile,talkerID,vowelID,
     
     pipe2 = Popen(args,stdin = PIPE, stdout = PIPE, stderr = PIPE)
     _,err2 = pipe2.communicate()
-    
+
     #READ FORMANTGRID
-    
+
     data = {}
-    
+
     #open file and skip 5 lines
     grid = open(gridName,'r')
-    for i in range(0,5):
-        print grid.readline()
-    
+    for i in list(range(0,5)):
+        print(grid.readline())
     #check number of formants
     if grid.readline() != '5\n':
-        print('oops')
-    
+        print('oops but its actually fine')
+
     #read formant tracks f1-f3
     for key in ['f1','f2','f3']:
         grid.readline()
@@ -119,7 +118,7 @@ def extractFramesAndRawFormantTracks(inputFile,talkerID,vowelID,
             temp[1][i] = float(grid.readline())
         temp[1] = hz2bark(temp[1])
         data[key] = temp
-        
+
     #extract median values f4-f5
     for key in ['f4med','f5med']:
         grid.readline()
@@ -130,11 +129,11 @@ def extractFramesAndRawFormantTracks(inputFile,talkerID,vowelID,
             grid.readline()
             temp[i] = float(grid.readline())
         data[key] = hz2bark(np.median(temp))
-     
+
     #check number of bandwidths
     if grid.readline() != '5\n':
         print('oops bandwidths')
-    
+
     #extract bandwidths
     data['b'] = np.empty(5)
     for f in range(0,5):
@@ -146,13 +145,13 @@ def extractFramesAndRawFormantTracks(inputFile,talkerID,vowelID,
             grid.readline()
             temp[i] = float(grid.readline())
         data['b'][f] = np.median(temp)
-        
+
     grid.close()
-    
+
 #    raw = rawData(data)
 #    raw.talkerID = talkerID
 #    raw.vowelID = vowelID
-    
+
 #    saveVowelData(talkerID,vowelID,data)
     if debug:
         return data,err,err2
@@ -168,7 +167,7 @@ def extractSourceAndHP(inputFile,talkerID,
         inputFile = os.path.join(mypath,inputFile)
     outputSource = os.path.join(mypath,talkerpath,'SOURCE.wav')
     outputHP = os.path.join(mypath,talkerpath,'HP.wav')
-    
+
     args = [settings['praat'],
             '--run',
             settings['extraction'],
@@ -179,10 +178,10 @@ def extractSourceAndHP(inputFile,talkerID,
             str(skirt),
             str(lpcFreq),
             str(lpcOrder)]
-    
+
     pipe = Popen(args,stdin = PIPE, stdout = PIPE, stderr = PIPE)
     _,err = pipe.communicate()
-    
+
     saveSettings(talkerpath,{
             'hpCutoff':hpCutoff,
             'skirt':skirt
@@ -241,7 +240,7 @@ class TracksFitter(TracksEditor):
         self.fits = {}
         self.orders = {'f1':3,'f2':3,'f3':3}
         TracksEditor.__init__(self,data,flag,ax)
-        
+
 class MyButton:
     def __init__(self,rect,text,func):
         self.ax = plt.axes(rect)
@@ -250,19 +249,19 @@ class MyButton:
         self.cid = self.button.on_clicked(self.func)
     def __del__(self):
         plt.delaxes(self.ax)
-        
+
 def editTracks(data,iso_f2f3=True):
     vals = {'start':None,'end':None,'button':None,'rectOn':False}
     def funcMaker(i):
         def func(event,i=i):
             vals['button'] = i
         return func
-    
+
     data = dict(data)
     fig,ax = plt.subplots()
     plt.subplots_adjust(bottom=0.2)
     editor = TracksEditor(data,ax=ax)
-    
+
     buttonRects = {
 #            'zoom1':[0.05,0.15,0.15,0.05],
             'zoom0':[0.025,0.1,0.175,0.05],
@@ -281,12 +280,12 @@ def editTracks(data,iso_f2f3=True):
     buttons = {}
     for i in buttonRects.keys():
         buttons[i] = MyButton(buttonRects[i],buttonTexts[i],funcMaker(i))
-    
+
     def rangeHelper(x1,x2):
         vals['start'] = x1
         vals['end'] = x2
     rangeSel = widget.SpanSelector(editor.ax,rangeHelper,'horizontal',span_stays=True)
-    
+
     while True:
         if vals['button'] == 'zoom0':
             editor.setAxisLimits(vals['start'],vals['end'])
@@ -325,7 +324,7 @@ def editTracks(data,iso_f2f3=True):
     del rangeSel
     editor.eraseAxes()
     del buttons['del'],buttons['trim']
-    
+
     buttonRects = {
             'f1':[0.025,0.025,0.2,0.05],
             'f2':[0.25,0.025,0.2,0.05],
@@ -338,7 +337,7 @@ def editTracks(data,iso_f2f3=True):
             }
     for i in buttonRects.keys():
         buttons[i] = MyButton(buttonRects[i],buttonTexts[i],funcMaker(i))
-    
+
     def rectHelper(*args):
         vals['rectOn'] = True
     rectSel = widget.RectangleSelector(editor.ax,rectHelper,interactive=True)
@@ -371,15 +370,15 @@ def editTracks(data,iso_f2f3=True):
             break
         vals['button'] = None
         plt.pause(1./60)
-    
+
 #    data['f1'] = isotonic(data['f1'])
 #    data['mapping'],indices = generate_mapping(data['f1'])
 #    data['f1'] = data['f1'][:,indices]
-    
+
     editor.eraseAxes()
 #    del editor
 #    fitter = TracksFitter(data,ax=ax)
-    
+
     return data
 
 def isotonic(track):
@@ -395,7 +394,9 @@ def isotonic(track):
 def generate_mapping(f1,endpoints=None):
     if not endpoints:
         endpoints = [f1[1,0],f1[1][-1]]
+    print(endpoints)
     temp,indices = np.unique(f1[1],return_index=True)
+    print(temp, indices)
     if indices[0] > indices[1]:
         temp = temp[::-1]
         indices = indices[::-1]
@@ -425,16 +426,16 @@ def fix_data(data,iso_f2f3=True):
 def synthesizeAudio(inputTrajectory,outputFile,talkerID,vowelID,start=0.,framerate=60.):
     time = np.arange(0,inputTrajectory.size)/float(framerate) + start
     end = time[-1]
-    
+
     #declare filenames
     sourceSound = os.path.join(mypath,'talkers',talkerID,'SOURCE.wav')
     hpSound = os.path.join(mypath,'talkers',talkerID,'HP.wav')
     if not os.path.isabs(outputFile):
         outputFile = os.path.join(mypath,outputFile)
     gridName = os.path.join(mypath,'tmp','GRID.FormantGrid')
-    
+
     data = loadVowelData(talkerID,vowelID)
-    
+
     #interpolate new formant tracks
     t_temp = np.interp(inputTrajectory,data['mapping'][0],data['mapping'][1])
     outTracks = {}
@@ -443,50 +444,50 @@ def synthesizeAudio(inputTrajectory,outputFile,talkerID,vowelID,start=0.,framera
     bkey = 'b'
     for k in fkeys:
         outTracks[k] = bark2hz(np.interp(t_temp,data[k][0],data[k][1]))
-    
+
     #get data for FormantGrid file
     talkerData = loadSettings(os.path.join('talkers',talkerID))
     hpCutoff = talkerData.get('hpCutoff',4000)
     skirt = talkerData.get('skirt',500)
     numFormants = 5
 #    numFormants = 3
-    
+
     #write FormantGrid file
     grid = open(gridName,'w')
 
     #header, number of formants
     grid.write('''File type = "ooTextFile"
     Object class = "FormantGrid"
-    
+
     %f
     %f
     %d
     '''%(start,end,numFormants))
-    
+
     #f1-f3 tracks
     for k in fkeys:
         numPoints = outTracks[k].shape[0]
         grid.write('%f\n%f\n%d\n'%(start,end,numPoints))
         for i in range(0,numPoints):
             grid.write('%f\n%f\n'%(time[i],outTracks[k][i]))
-    
+
     #f4-f5 single value
     for k in fkeys2:
         numPoints = 1
         grid.write('%f\n%f\n%d\n'%(start,end,numPoints))
         grid.write('%f\n%f\n'%(start,bark2hz(data[k])))
-    
-    
+
+
     #bandwidths
     grid.write('%d\n'%(numFormants))
     for i in range(0,numFormants):
         numPoints = 1
         grid.write('%f\n%f\n%d\n'%(start,end,numPoints))
         grid.write('%f\n%f\n'%(start,data[bkey][i]))
-    
+
     grid.close()
     data.close()
-    
+
     #call Praat and return stdout, stderr messages
     args = [
             settings['praat'],
@@ -504,35 +505,36 @@ def synthesizeAudio(inputTrajectory,outputFile,talkerID,vowelID,start=0.,framera
 
     pipe = Popen(args,stdout = PIPE,stderr = PIPE,stdin = PIPE)
     _,err = pipe.communicate()
-    
+
 #    os.remove(gridName) #delete FormantGrid file
     return err
-    
+
 def synthesizeFrameIndices(inputTrajectory,talkerID,vowelID):
     data = loadVowelData(talkerID,vowelID)
     t_temp = np.interp(inputTrajectory,data['mapping'][0],data['mapping'][1])
+
     data.close()
-    
+
     talkerData = loadSettings(os.path.join('talkers',talkerID,vowelID))
     firstStoredFrame = talkerData.pop('first image index',1)
-    
+
     return (t_temp*talkerData['framerate'] + firstStoredFrame).astype(int)
 
 def synthesizeVideo(inputTrajectory,outputFile,talkerID,vowelID,start=0.,framerate=60.):
     outputSound = os.path.join('tmp','video.wav')
     rmtree('tmp')
     os.mkdir('tmp')
-    
+
     err = synthesizeAudio(inputTrajectory,outputSound,talkerID,vowelID,start,framerate)
     indices = synthesizeFrameIndices(inputTrajectory,talkerID,vowelID)
-    
+
     talkerData = loadSettings(os.path.join('talkers',talkerID,vowelID))
     stem = talkerData['image filename pattern']
     tmpStem = os.path.join('tmp','tmp_%03d.png')
-    
+
     for i in range(0,indices.size):
         os.symlink(os.path.join(mypath,'talkers',talkerID,vowelID,stem%indices[i]),tmpStem%i)
-    
+
     command = [
             settings['ffmpeg'],
             '-framerate',str(framerate),
@@ -541,12 +543,14 @@ def synthesizeVideo(inputTrajectory,outputFile,talkerID,vowelID,start=0.,framera
             '-r',str(framerate),
 #            '-pix_fmt','rgb24',
             '-y',
+            '-c:v','libx264',
+            '-crf','10',
             outputFile
             ]
 
     pipe = Popen(command,stdin=PIPE,stdout=PIPE,stderr=PIPE)
     _,err2 = pipe.communicate()
-    
+
     return err,err2
 
 # %% debugging
